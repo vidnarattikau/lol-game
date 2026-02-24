@@ -129,6 +129,12 @@
             text-align: right;
         }
         .kill { margin: 5px 0; }
+    @media (max-width: 768px) {
+            #gameCanvas { width: 100vw; height: calc(100vw * 0.58); }
+            #skillBar { bottom: 10px; gap: 8px; }
+            .skill { width: 56px; height: 56px; }
+            h1 { font-size: 34px; }
+        }
     </style>
 </head>
 <body>
@@ -171,13 +177,13 @@
                 <span style="font-size:12px;color:#888">法师</span>
             </div>
         </div>
-        <button class="btn" onclick="startGame()">开始游戏</button>
+        <button type="button" class="btn" onclick="startGame()">开始游戏</button>
     </div>
     
     <div id="gameOverScreen" class="hidden">
         <h1 id="gameOverTitle">游戏结束</h1>
         <p style="color:#fff;font-size:24px;margin-bottom:20px">击杀: <span id="finalKills">0</span></p>
-        <button class="btn" onclick="location.reload()">再来一局</button>
+        <button type="button" class="btn" onclick="location.reload()">再来一局</button>
     </div>
 
     <script>
@@ -191,6 +197,8 @@
         ];
         
         let player, enemies, minions, towers, bullets, kills, gold, selectedChampion, skillCds;
+        let touchTarget = null;
+        let minionTimer = null;
         
         function selectChampion(idx) {
             selectedChampion = idx;
@@ -227,7 +235,8 @@
             
             // 创建小兵
             spawnMinions();
-            setInterval(spawnMinions, 5000);
+            if(minionTimer) clearInterval(minionTimer);
+            minionTimer = setInterval(spawnMinions, 5000);
             
             // 创建敌方英雄
             enemies.push({
@@ -258,6 +267,23 @@
         const keys = {};
         document.addEventListener('keydown', e => keys[e.key] = true);
         document.addEventListener('keyup', e => keys[e.key] = false);
+
+        canvas.addEventListener('touchstart', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const t = e.changedTouches[0];
+            touchTarget = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+            e.preventDefault();
+        }, { passive: false });
+        canvas.addEventListener('touchmove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const t = e.changedTouches[0];
+            touchTarget = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+            e.preventDefault();
+        }, { passive: false });
+        canvas.addEventListener('touchend', () => {
+            touchTarget = null;
+        }, { passive: true });
+
         
         function update() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -266,6 +292,15 @@
             drawMap();
             
             // 玩家移动
+            if (touchTarget) {
+                const dxM = touchTarget.x - player.x;
+                const dyM = touchTarget.y - player.y;
+                const dM = Math.hypot(dxM, dyM);
+                if (dM > 4) {
+                    player.x += dxM / dM * player.speed;
+                    player.y += dyM / dM * player.speed;
+                }
+            }
             if (keys['w'] || keys['W'] || keys['ArrowUp']) player.y = Math.max(50, player.y - player.speed);
             if (keys['s'] || keys['S'] || keys['ArrowDown']) player.y = Math.min(650, player.y + player.speed);
             if (keys['a'] || keys['A'] || keys['ArrowLeft']) player.x = Math.max(50, player.x - player.speed);
@@ -357,6 +392,7 @@
             // 游戏结束
             if (player.hp <= 0) {
                 clearInterval(gameLoop);
+                if(minionTimer){ clearInterval(minionTimer); minionTimer=null; }
                 document.getElementById('gameOverScreen').classList.remove('hidden');
                 document.getElementById('finalKills').textContent = kills;
             }
@@ -395,15 +431,26 @@
             ctx.fillStyle = '#333';
             ctx.fillRect(u.x - 20, u.y - u.size - 10, 40, 5);
             ctx.fillStyle = '#0f0';
-            ctx.fillRect(u.x - 20, u.y - u.size - 10, 40 * (u.hp / (u.maxHp || 100), 5);
+            ctx.fillRect(u.x - 20, u.y - u.size - 10, 40 * (u.hp / (u.maxHp || 100)), 5);
         }
         
         function attack() {
-            bullets.push({
-                x: player.x, y: player.y,
-                vx: 0, vy: -10,
-                color: player.color
+            if(!player) return;
+            let target = null;
+            let bestDist = Infinity;
+            enemies.forEach((e)=>{
+                const d = Math.hypot(e.x-player.x, e.y-player.y);
+                if(d<bestDist){ bestDist=d; target=e; }
             });
+            let vx=0, vy=-10;
+            if(target){
+                const dx = target.x-player.x;
+                const dy = target.y-player.y;
+                const d = Math.hypot(dx,dy) || 1;
+                vx = dx/d*10;
+                vy = dy/d*10;
+            }
+            bullets.push({ x: player.x, y: player.y, vx, vy, color: player.color });
         }
         
         function castSkill(idx) {
